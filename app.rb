@@ -1,10 +1,12 @@
 require 'sinatra'
 require 'oauth2'
 require 'json'
+require 'byebug'
+
 enable :sessions
 
-CONSUMER_KEY = '8d6a4bf754f7d2ca127eb4023b42d22e605888e4311a9a1f6931cefae9e53c17'
-CONSUMER_SECRET = 'cc76b167e9497faab509648e4dc90d7d81736e96f541112db48675b7371c435c'
+CLIENT_ID = '422a6f1976acf86ac01d4169684b7202d55a5e5b1698b41047459211eea31ec3'
+CLIENT_SECRET = 'a3967bfe9eb7bfc2986fbc042f99028fda9e5c3fb641e2ca439c9305f5fabae3'
 
 get '/' do
   redirect '/tasks'
@@ -13,28 +15,30 @@ end
 get '/auth/callback' do
   access_token = client.auth_code.get_token(params[:code], redirect_uri: redirect_uri)
   session[:access_token] = access_token.token
+  session[:refresh_token] = access_token.refresh_token
+
   redirect '/tasks'
 end
 
 get '/tasks' do
   if session[:access_token]
-    @tasks = get_response('tasks')
+    @tasks = get_response('tasks').body
   else
-    redirect client.authorize_url
+    redirect client.auth_code.authorize_url(redirect_uri: redirect_uri)
   end
 
   erb :tasks
 end
 
 def get_response(url)
-  access_token = session[:access_token]
-  access_token = OAuth2::AccessToken.new(client, access_token)
-  access_token.get("/api/external/#{url}")
+  access_token_client = OAuth2::AccessToken.new(client, session[:access_token], refresh_token: session[:refresh_token])
+  access_token_client.get("/api/external/#{url}")
 end
 
 def client
   OAuth2::Client.new(
-      CONSUMER_KEY, CONSUMER_SECRET,
+      CLIENT_ID,
+      CLIENT_SECRET,
       site: 'http://lvh.me:3000',
       authorize_url: '/oauth2/authorize',
       token_url: '/oauth2/token'
@@ -42,7 +46,7 @@ def client
 end
 
 def redirect_uri
-  uri = URI.parse(request.url)
+  uri = URI.parse('http://localhost:5000')
   uri.path = '/auth/callback'
   uri.query = nil
   uri.to_s
